@@ -291,11 +291,26 @@
 # 逆转条件：从本文件删掉下面三段 + scripts/plugin-dirs.json 的 externals 条目 + vendor/dsh-purge/。
 # system-prompt 覆盖：上游随包附带的 bundle patch 用配置面关掉 harness 身份行并清空 persona 前缀，
 # 这是「破甲」在水位线上的那一半（另一半是 lib/identity.js 的 assemble 改写）。
+#
+# personaSuffix 必须清空，**不得照抄上游 bundle patch 里的 `Your working directory is {{cwd}}.`**
+# （0.15.1 实修，设备实测报错 `prompt variable "{{cwd}}" in section "deployment:persona-suffix";
+# registered variables: provider, model`，每一轮对话都在 assemble 阶段失败）：
+#   · 0.2.1-alpha.1 起宿主不再注册内置 `{{cwd}}` 模板变量，工作目录改由 working-directory 服务
+#     作为**必需上下文**提供（`packages/core/system-prompt/README.md:80` 逐字写着
+#     "Custom persona templates must not depend on a built-in `{{cwd}}` variable … Remove the
+#     `Your working directory is {{cwd}}.` clause"；升级指南
+#     `docs/upgrade-guide/v0.2.1-alpha.1/working-directory/guide.md:20` 同义）。
+#   · 未注册变量不是「渲染成空」而是**抛错**：`system-prompt.spec.ts:211` 的
+#     `unknown prompt variable "{{cwd}}" in section "deployment:persona-suffix"` 就是同一形态。
+#   · 目录上下文不会因此丢失：dsh-purge 自己在 waterfall 里补一句 `Working directory: {{cwd}}.`
+#     的**已渲染文本**（lib/identity.js:236/247，纯字面量，不再走模板插值）。
+# 另注：vendor/dsh-purge/cordis.patch.yml 里仍留着这句旧模板，本仓不走「把该包当 bundle include」
+# 那条路（装配面由本文件逐条手写），故它不会被应用；见 vendor/dsh-purge/PATCHES.md 差异 5。
 - id: system-prompt
   config:
     includeHarnessIdentity: false
     personaPrefix: ""
-    personaSuffix: "Your working directory is {{cwd}}."
+    personaSuffix: ""
 
 - insert:
     - id: dsh-purge

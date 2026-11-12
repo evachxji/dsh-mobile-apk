@@ -469,12 +469,12 @@ const AUDIT_BASELINE = new Map([
   // 这样有快照时真跑通过、无快照时是「明确结案」而不是「零判据」——登记表随之不再需要，
   // 销账倒挂也消失：删登记这个动作在双环境下原本不可能同时成立（本地有快照→缺口不复现，
   // CI 无快照→恒 SKIP），现在两侧都自洽。
-  ['check-snapshot-fingerprint.mjs', {
-    requires: ['snapshot'],
-    kinds: ['no-verdict'],
-    reason: '净检出无 tar 时以 SKIP 结案，不打印 PASS/FAIL 判据行',
-    until: '2026-12-31',
-  }],
+  // 已销账（2026-11-12，0.15.1 内置 dsh-purge 的构建轮）：check-snapshot-fingerprint 条目删除。
+  // 与上面 #1154 同一形态——登记的前提是「构建链里会出现 no-verdict 的 SKIP」，而那条门禁在
+  // 两条构建链的调用点都排在「snapshot 源必须在场」（requires('snapshot 源')）之后，快照恒有 ⇒
+  // 缺口在构建链里**不可能**复现，于是每轮构建都必然走到「登记过的缺口本次没有复现」这条判红。
+  // 净检出下它仍会 SKIP，但那时没有任何构建链在跑，判据属于 check-gate-skips 的 SKIP 纪律审计，
+  // 由「SKIP 行带计数」那条断言覆盖，不需要再用「缺口登记」二次记账。
 ])
 
 const ZERO_CRITERIA_REGISTER = new Map([

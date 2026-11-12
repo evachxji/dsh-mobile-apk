@@ -96,6 +96,20 @@ diff 里可见、可审。
 与上游 `cordis.patch.yml` 的两处有意偏差（上游顶层那条 `- id: dsh-purge` + `inject` 覆盖不再单列；
 redteam store 不写 `root: !!js dshHomePath('redteam')`）在 patch 文件里有逐条理由。
 
+## 5. `cordis.patch.yml` 里的 `personaSuffix: Your working directory is {{cwd}}.` 不被使用
+
+- 上游把「清空 persona 前缀 + 关掉 harness 身份」写成随包 bundle patch，其中 `personaSuffix`
+  里带 `{{cwd}}` 模板变量。**0.2.1-alpha.1 起宿主不再注册该变量**（
+  `packages/core/system-prompt/README.md:80`、升级指南
+  `docs/upgrade-guide/v0.2.1-alpha.1/working-directory/guide.md:20`），未注册引用不是渲染成空
+  而是**抛错**（`system-prompt.spec.ts:211`），于是每一轮对话都在 assemble 阶段失败。
+- 本仓的装配面由 `scripts/profile-web.cordis.patch.yml` 逐条手写（不用「把本包当 bundle include」
+  那条路），那里给的是 `personaSuffix: ""`；本文件保持上游字节不变（镜像可取证）。
+- 目录上下文不会丢：`lib/identity.js:236/247` 会在 waterfall 里补一句**已渲染文本**
+  `Working directory: {{cwd}}.`（纯字面量，不再走模板插值）。
+- 追版注意：若将来上游修掉这句模板（或宿主重新注册 `{{cwd}}`），本差异可删除；
+  在此之前**不要**把本文件里的这句原样抄进任何 profile patch。
+
 ## 维护
 
 ```bash
