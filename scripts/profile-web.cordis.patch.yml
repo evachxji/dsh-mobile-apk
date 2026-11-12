@@ -233,3 +233,53 @@
   disabled: true
 - id: product-analytics
   disabled: true
+
+# ── 破甲（dsh-purge 1.1.71，出厂内置；本分支 = 引擎 0.2.0-rc.2）────────────────────────
+# 为什么不只是改个版本号：dsh-purge 的 `dshTarget` 就是 0.2.0-rc.2，本树 baseline 与该插件的
+# 目标版本**完全对齐**，所以它随包的 bundle patch 可以按原文展开——包括 personaSuffix 里的
+# `{{cwd}}`：0.2.0-rc.2 的 dsh-agent-loop 明确注册了该变量
+# （`ctx.systemPrompt.variable("cwd", (context) => context.agent?.session.header.cwd)`）。
+# 0.2.1-alpha.1 起这个注册被移除、且未注册引用会在装配阶段抛错，那时必须清空 personaSuffix
+# （那条处置在 main 分支的 0.15.1 修复里）。两个分支的差异就落在这里，其余装配面完全相同。
+#
+# 来源：vendor/dsh-purge（evachxji/dsh-purge master 镜像；上游 YuJunZhiXue/dsh-purge 即将删库）。
+# 注入集登记在 scripts/plugin-dirs.json 的 externals；本仓对 vendored 字节的改动见
+# vendor/dsh-purge/PATCHES.md。
+#
+# 4 条 insert 行 = 同一个包的 4 个 exports 装配面：主包（prompt 改写 + 设置页）、演练台预设/技能、
+# SQLite 事实库、演练台 HTTP 桥。只挂主包会让演练台服务缺席（工具行 pending）。
+- id: system-prompt
+  config:
+    includeHarnessIdentity: false
+    personaPrefix: ""
+    personaSuffix: Your working directory is {{cwd}}.
+
+- insert:
+    - id: dsh-purge
+      name: dsh-purge
+      config:
+        enabled: true
+        autoApplyOnStart: false
+        autoUpdateOnStart: false
+        autoRevertOnMissing: false
+        injectOnce: false
+        stripMnemon: true
+        verbose: false
+        postPrompt: ""
+        postPromptOrder: 5100
+        autoRetry: true
+        retryMax: 3
+        autoContinue: false
+        continueMax: 3
+        continueText: "继续"
+        capabilityProtocol: true
+        hooksDenyBypass: true
+
+    - id: dsh-purge-redteam
+      name: dsh-purge/redteam
+
+    - id: dsh-purge-redteam-store
+      name: dsh-purge/redteam/store
+
+    - id: dsh-purge-redteam-ui
+      name: dsh-purge/redteam/ui

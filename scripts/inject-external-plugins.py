@@ -31,7 +31,7 @@ def is_injectable(name, pkg_names):
         rel = name[idx + len(marker):]
         if rel.startswith("lib/") and not rel.endswith(".map"):
             return (pkg, rel)
-        if rel.startswith("skills/"):
+        if rel.startswith("skills/") or rel.startswith("presets/"):
             return (pkg, rel)
         if rel in INCLUDE_FILES:
             return (pkg, rel)
@@ -49,7 +49,9 @@ def build_replacements(pkg_dirs):
         except Exception:
             name = os.path.basename(os.path.normpath(d))
         files = {}
-        for sub in ("lib", "skills"):
+        # presets/：dsh-purge 的演练台预设在包内该目录，运行期被 lib/redteam 读取并落到
+        # $DSH_HOME/.agent-presets/；旧注入面（lib+skills）会静默丢掉它。
+        for sub in ("lib", "skills", "presets"):
             base = os.path.join(d, sub)
             if not os.path.isdir(base):
                 continue

@@ -45,6 +45,14 @@
     {
       "source": "plugins/dsh-model-capability/src/index.ts",
       "expected": 1
+    },
+    {
+      "source": "vendor/dsh-purge/lib/index.js",
+      "expected": 1
+    },
+    {
+      "source": "vendor/dsh-purge/lib/redteam/ui.js",
+      "expected": 1
     }
   ],
   "dynamicPathExpressions": [
@@ -66,7 +74,9 @@
     {
       "source": "plugins/dsh-model-capability/src/index.ts",
       "expression": "MANUAL_FILL_ROUTE",
-      "resolvesTo": ["/api/android/model-capability/fill"],
+      "resolvesTo": [
+        "/api/android/model-capability/fill"
+      ],
       "literalEvidence": "export const MANUAL_FILL_ROUTE = '/api/android/model-capability/fill'",
       "reason": "A6 手动补齐路由的路径常量：宿主注册与页面调用共用同一字面量，避免两处各写一份导致漂移。"
     },
@@ -646,6 +656,45 @@
       "verdict": "not-mounted",
       "packageName": "@deepseek-ai/dsh-webhook-github",
       "evidence": "webhook-github 只出现在 apps/cli 的示例 cordis.yml，不在 base/web-app bundle 行里；移动 profile 不挂载该插件，故 config.path 无任何实际注册。"
+    }
+  ],
+  "localRoutes": [
+    {
+      "id": "dsh-purge-host-routes",
+      "source": "vendor/dsh-purge/lib/index.js",
+      "kind": "exact+prefix",
+      "paths": [
+        "/dsh-purge/status",
+        "/dsh-purge/hooks-deny",
+        "/dsh-purge/last-user",
+        "/dsh-purge/rewind/options",
+        "/dsh-purge/rewind",
+        "/dsh-purge/update",
+        "/dsh-purge/apply",
+        "/dsh-purge/revert",
+        "/dsh-purge/uninstall",
+        "/dsh-purge/drill-grant",
+        "/dsh-purge/override",
+        "/dsh-purge/own-servers",
+        "/dsh-purge/restart",
+        "/dsh-purge/skills",
+        "/dsh-purge/skill",
+        "/dsh-purge/rules"
+      ],
+      "authMarker": "allowPluginRequest",
+      "authCallMarker": "if (!allowPluginRequest(request, response)) return;",
+      "evidence": "不在 /api 前缀下（因此不经过 client-connection 的 /api 门），由 lib/index.js 的 allowPluginRequest 自证：Host 头必须存在、Origin 的 host 必须与 Host 同源，否则 denyCrossOrigin 直接 403。两条注册包装（installWebServer 的 registerPluginRoute、模块级 registerRoute）都把该 guard 套在 handler 最外层，全部 16 条路径共用同一道门；这 16 条是设置页（破甲状态/补丁/规划/重启）与技能/规则下发的全部入口。"
+    },
+    {
+      "id": "dsh-purge-redteam-bridge",
+      "source": "vendor/dsh-purge/lib/redteam/ui.js",
+      "kind": "exact",
+      "paths": [
+        "/redteam/api"
+      ],
+      "authMarker": "const loopback = remote === '127.0.0.1'",
+      "authCallMarker": "const loopback = remote === '127.0.0.1'",
+      "evidence": "演练台 HTTP 桥（POST only，405 挡其它方法）。注册块内自带来源校验：remoteAddress 是回环则放行（桌面/安卓壳都是本机 WebView 直连），非回环时 Origin.host 必须等于 Host，否则 403；鉴权不依赖 /api 前缀门，故在本地路由面登记而不是 routes 表。"
     }
   ]
 }

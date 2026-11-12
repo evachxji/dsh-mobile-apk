@@ -91,7 +91,10 @@ def build_ext_replacements(pkg_dirs):
         except Exception:
             name = os.path.basename(os.path.normpath(d))
         files = {}
-        for sub in ("lib", "skills"):
+        # presets/（0.15.x 内置 dsh-purge 时加宽的第三棵树）：演练台预设由 lib/redteam 在运行期
+        # 读包内相对路径并落到 $DSH_HOME/.agent-presets/；它既不是 lib/ 也不是 skills/，旧清单下
+        # 会被静默丢弃 ⇒ 设备上「预设为空」而成员/导入两条判据全绿（P0 形态的注入面漏目录）。
+        for sub in ("lib", "skills", "presets"):
             base = os.path.join(d, sub)
             if not os.path.isdir(base):
                 continue
@@ -143,7 +146,7 @@ def match_ext(name, ext_names):
         rel = name[idx + len(marker):]
         if rel.startswith("lib/") and not rel.endswith(".map"):
             return (pkg, rel)
-        if rel.startswith("skills/"):
+        if rel.startswith("skills/") or rel.startswith("presets/"):
             return (pkg, rel)
         if rel in EXT_INCLUDE_FILES:
             return (pkg, rel)

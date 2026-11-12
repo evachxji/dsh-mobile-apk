@@ -101,6 +101,24 @@ export function mountedNames(text) {
   return out
 }
 
+/**
+ * 挂载条目名 → **包名**（`pkg/sub` 取 `pkg`；scoped 取 `@scope/name`）。
+ *
+ * 为什么需要（0.15.x，出厂内置 dsh-purge）：cordis 的 `name:` 既可以是包名，也可以是包的
+ * **exports 子路径**（`dsh-purge/redteam` 解析到 `exports["./redteam"]`）。子路径不是
+ * 「注入面之外的包」——它和包名指向同一个 node_modules 目录，只是装配同一个包里的另一个
+ * 插件模块。反向差集若按整串比较，一个包内的第 2~4 个装配面会被判成「多挂了包」，而正向
+ * 差集已经因第 1 条（包名本体）通过了。
+ *
+ * 边界：只做**归一去重**，不做通配——归一后仍必须有对应的注入包，否则照旧判红。
+ */
+export function packageNameOf(entryName) {
+  const raw = String(entryName).trim()
+  const parts = raw.split('/').filter((p) => p !== '')
+  if (parts.length === 0) return ''
+  return raw.startsWith('@') && parts.length >= 2 ? parts[0] + '/' + parts[1] : parts[0]
+}
+
 if (process.argv.includes('--self-test')) {
   // 正控：条目形态（顶层行 / insert 子条目 / 引号）都要认出来；
   // 反控：配置块内的 id/name（llm-pi-ai 的模型表）一个都不许进集合。
@@ -160,7 +178,9 @@ for (const d of dirs) {
 const missing = [...injected].filter((n) => !mounted.has(n))
 // 反向：挂载集 ∩ 本仓注入面 ⊆ 注入集（挂载了但清单/调用方没注入 = 装配失败或旧版残留）
 const ENGINE_SCOPE = '@deepseek-ai/'
-const unmounted = [...mounted].filter((n) => !injected.has(n) && !n.startsWith(ENGINE_SCOPE))
+// 0.15.x：按**包名**归一后比（`dsh-purge/redteam` 与 `dsh-purge` 同属一个注入包，见 packageNameOf）。
+const unmounted = [...new Set([...mounted].map(packageNameOf))]
+  .filter((n) => !injected.has(n) && !n.startsWith(ENGINE_SCOPE))
 
 if (missing.length === 0 && unmounted.length === 0) {
   console.log('patch mounts ok (双向): ' + injected.size + ' 个注入包全部挂载（' + [...injected].sort().join(', ') + '）')

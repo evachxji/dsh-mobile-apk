@@ -284,33 +284,39 @@ try {
     mkdirSync(degradeStaged, { recursive: true })
     // 默认指向**原源目录**（表示「不降级」）；只有真的降级成功才改指向暂存副本。
     // 无 lib/client.js 的源不复制、保持原路径。
-    const degraded = new Map([
-      ['undo', undo], ['market', market],
-    ])
-    for (const key of ['undo', 'market']) {
-      const src = degraded.get(key)
-      const leaf = key + '-degraded'
+    // 根级注入源 = scripts/plugin-dirs.json 的 externals **全部**（不再硬编码 undo/market）。
+    // 历史缺陷形态：清单里新增一个 external（dsh-purge）而这里只认两个字面量 ⇒ 权威 patch 已挂它、
+    // 快照里却没有它 ⇒ 设备上那行只是「找不到模块」；或 check-patch-mounts 反向差集判红。
+    const externName = (p) => p.replace(/\\/g, '/').split('/').pop()
+    const degraded = new Map()
+    for (const dir of externalDirs) degraded.set(externName(dir), dir)
+    const externMissing = [...degraded.keys()].filter((n) => !existsSync(join(degraded.get(n), 'package.json')))
+    if (externMissing.length > 0) throw new Error('缺根级注入源：' + externMissing.join(', '))
+    for (const [name, src] of degraded) {
       if (!existsSync(join(src, 'lib', 'client.js'))) {
         log(`  跳过降级（无 lib/client.js）：${src}`)
         continue
       }
-      const dst = join(degradeStaged, leaf)
+      const dst = join(degradeStaged, name + '-degraded')
       rmSync(dst, { recursive: true, force: true })
       // cpSync recursive 等价于本地链的 `robocopy /MIR`（整树复制；排除 .git 以免把版本库带进暂存树）
       cpSync(src, dst, { recursive: true, filter: (s) => !s.split(/[\\/]/).includes('.git') })
       run('node', [gate('check-browser-syntax-floor.mjs'), '--degrade', '--stage', dst])
-      degraded.set(key, dst)
+      degraded.set(name, dst)
       log(`  暂存降级就位：${src} -> ${dst}`)
     }
-    const undoDeg = degraded.get('undo')
-    const marketDeg = degraded.get('market')
-    log('单 pass 注入（@dsh-android + undo/market + 权威 patch，全部装配 profile）…')
+    const externalArgs = []
+    for (const name of [...degraded.keys()].sort()) {
+      externalArgs.push('--external', degraded.get(name))
+      log(`  [inject] ${name} -> ${degraded.get(name)}`)
+    }
+    log('单 pass 注入（@dsh-android + 全部 externals + 权威 patch，全部装配 profile）…')
     // ST-05：--all-profiles = 权威 patch 写给全部真实装配 profile（web+headless，负控 profile 除外）
     run(PYTHON, [
       join(ROOT, 'scripts', 'inject-all.py'), snapSrc, join(work, 'snap-final2.tar.xz'),
       join(ROOT, 'scripts', 'profile-web.cordis.patch.yml'),
       '--dsh-android', ...pluginDirs,
-      '--external', undoDeg, marketDeg,
+      ...externalArgs,
       '--all-profiles',
     ])
     snapIn = join(work, 'snap-final2.tar.xz')
@@ -321,7 +327,7 @@ try {
 
   // ---- 4. 门禁（注入后；与 build-apk-013.ps1 同一份门禁集）----
   log('门禁：patch 挂载集校验（双向差集）…')
-  run('node', [gate('check-patch-mounts.mjs'), join(ROOT, 'scripts', 'profile-web.cordis.patch.yml'), ...pluginDirs, undo, market])
+  run('node', [gate('check-patch-mounts.mjs'), join(ROOT, 'scripts', 'profile-web.cordis.patch.yml'), ...pluginDirs, ...externalDirs])
   // 注入面成员完整性（P0）：包内新增文件必须随注入进 tar，且相对导入不得悬空
   log('门禁：注入成员完整性（成员集合 + 相对导入可解析）…')
   run('node', [gate('check-inject-completeness.mjs'), snapIn])

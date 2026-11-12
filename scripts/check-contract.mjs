@@ -628,8 +628,23 @@ if (!existsSync(overlayPath) || !existsSync(PROFILE_PATCH_PATH) || semverImpl ==
         if (!existsSync(pkgPath)) continue
         nameToRepo.set(JSON.parse(readFileSync(pkgPath, 'utf8')).name, dir)
       }
+      /**
+       * 条目名 → 仓库目录。先按全名，再按**包名**归一（0.15.x，dsh-purge）。
+       *
+       * 原因：cordis 的 `name:` 可以是包的 exports 子路径（`dsh-purge/redteam` →
+       * `exports["./redteam"]`），它和包名指向同一个 node_modules 目录、同一个 package.json，
+       * 只是装配该包里的另一个插件模块。按全名查表会把它当成「仓库里不存在的包」判红，
+       * 而那个结论是错的。归一判据与 `check-patch-mounts.mjs` 的 `packageNameOf` 同源。
+       */
+      const packageNameOfEntry = (name) => {
+        const raw = String(name).trim()
+        const parts = raw.split('/').filter((p) => p !== '')
+        if (parts.length === 0) return ''
+        return raw.startsWith('@') && parts.length >= 2 ? parts[0] + '/' + parts[1] : parts[0]
+      }
+      const repoOfMount = (name) => nameToRepo.get(name) ?? nameToRepo.get(packageNameOfEntry(name))
       const mountNames = new Set(mounts.inserts.map(r => r.name))
-      const ghostMounted = [...mountNames].filter(n => !n.startsWith('@deepseek-ai/') && !nameToRepo.has(n))
+      const ghostMounted = [...mountNames].filter(n => !n.startsWith('@deepseek-ai/') && repoOfMount(n) === undefined)
       if (ghostMounted.length > 0) fail('profile patch 挂了仓库里不存在的包（注入链会带一个空壳）: ' + ghostMounted.join(', '))
       const registeredNotMounted = contract.inserted.map(i => i.pkg).filter(n => !mountNames.has(n))
       if (registeredNotMounted.length > 0) fail('contract.inserted 登记但 profile patch 不挂载（幽灵登记）: ' + registeredNotMounted.join(', '))
@@ -648,7 +663,7 @@ if (!existsSync(overlayPath) || !existsSync(PROFILE_PATCH_PATH) || semverImpl ==
           else { judged += 1; ok('insert ' + row.id + ': 引擎包 ' + row.name + '@' + pinned + ' 与运行时同版') }
           continue
         }
-        const repo = nameToRepo.get(row.name)
+        const repo = repoOfMount(row.name)
         if (repo === undefined) continue // 上面已按幽灵判红
         const pkg = JSON.parse(readFileSync(join(root, repo, 'package.json'), 'utf8'))
         const peers = pkg.peerDependencies
