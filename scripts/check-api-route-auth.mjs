@@ -247,6 +247,50 @@ for (const [sourcePath, sourceRoutes] of discovered) {
 check('所有直接字面量 /api 路由均已登记', unknownLiteralPaths.size === 0,
   [...unknownLiteralPaths].sort().join(', '))
 
+// ── 0.15.x：非 /api 本地路由面（同源自证）──────────────────────────────────
+// 为什么单独一张表而不塞进 routes：routes 的每条判据都要求 path 以 `/api/` 开头——那正是
+// client-connection 鉴权门的载体。vendored 插件自带的路由（dsh-purge 的 `/dsh-purge/*` 与
+// `/redteam/api`）不在该前缀下，改走自己的同源/回环校验。塞进 routes 会让 id/path 判据红；
+// 不登记又会让它们从「非字面量 path 表达式」那一段**整体逃逸**——`literalPath` 只认 /api，
+// 非 /api 的字面量在扫描器眼里天然是「非字面量」，于是它们既不在 routes 表也不在
+// dynamicPathExpressions 的合法登记形态里，只能被判红而无法豁免。
+// 故给这一类一条独立、可核验的登记面：
+//   · paths 必须逐字出现在源文件里（改路径不登记 ⇒ 判红）；
+//   · 该 source 扫到的对应注册站点必须存在（删路由不删登记 ⇒ 判红）；
+//   · authCallMarker 必须落在该注册块内（剥注释后）——与 routes 的 protected 判据同一口径；
+//   · 不得占用 /api 前缀（那属于 routes 表，两表不许互相顶替）。
+const localDecls = Array.isArray(policy.localRoutes) ? policy.localRoutes : []
+const claimedExpressions = new Set()
+for (const row of localDecls) {
+  const id = typeof row.id === 'string' ? row.id : ''
+  const label = '本地路由登记 ' + (id || '<missing>')
+  const sourcePath = typeof row.source === 'string' ? row.source : ''
+  const paths = Array.isArray(row.paths) ? row.paths.filter((p) => typeof p === 'string' && p.startsWith('/')) : []
+  const callMarker = typeof row.authCallMarker === 'string' ? row.authCallMarker : ''
+  const evidence = typeof row.evidence === 'string' ? row.evidence.trim() : ''
+  const sourceFile = sourcePath === '' ? '' : join(root, sourcePath)
+  const srcText = sourceFile !== '' && existsSync(sourceFile) ? readFileSync(sourceFile, 'utf8') : ''
+  const missingPaths = paths.filter((p) => !srcText.includes(p))
+  check(label + ' 的路径字面量在源文件', srcText !== '' && paths.length > 0 && missingPaths.length === 0,
+    srcText === '' ? '源文件取不到: ' + (sourcePath || '<missing>')
+      : paths.length === 0 ? 'paths 为空'
+        : '源码里找不到: ' + missingPaths.join(', '))
+  check(label + ' 不占用 /api 前缀（那属于 routes 表）', paths.every((p) => !p.startsWith('/api/')),
+    paths.filter((p) => p.startsWith('/api/')).join(', '))
+  // 非 /api 的 path 在扫描器里没有 literalPath（只有 /api 前缀才被认定为字面量路由），
+  // 故这里按 **pathExpression 包含声明路径** 匹配：表达式是 `"/dsh-purge/status"` 这类
+  // 带引号的字面量文本，包含比对足以把站点钉到具体条目上。
+  const regs = (discovered.get(sourcePath) ?? [])
+    .filter((r) => paths.some((p) => String(r.pathExpression).includes(p)))
+  check(label + ' 命中已扫到的注册站点', regs.length > 0,
+    '未在 ' + (sourcePath || '<missing>') + ' 扫到以下任一路径的注册: ' + paths.join(', '))
+  const unguarded = regs.filter((r) => callMarker === '' || !stripSourceComments(r.head).includes(callMarker))
+  check(label + ' 的 guard 在注册块内', regs.length > 0 && unguarded.length === 0,
+    callMarker === '' ? '缺 authCallMarker 声明' : '调用形态不在注册块内（已剥注释）: ' + callMarker)
+  check(label + ' 有审阅理由', evidence.length >= 30)
+  for (const r of regs) claimedExpressions.add(sourcePath + ' :: ' + r.pathExpression)
+}
+
 // review §2.3（2026-09-14）：变量/展开/别名注册此前可整体逃逸（scanner 只认字面量 path）。现要求
 // 每条非字面量 path 表达式在 policy.dynamicPathExpressions 显式声明并可核验：
 //   resolvesTo        必须都是已登记 policy route；
@@ -258,6 +302,9 @@ for (const [sourcePath, sourceRoutes] of discovered) {
   for (const registration of sourceRoutes) {
     if (registration.literalPath !== undefined) continue
     const key = sourcePath + ' :: ' + registration.pathExpression
+    // 已被 localRoutes 认领的非 /api 站点（见上段）：那不是「未声明的动态表达式」，
+    // 而是另一张表已逐条登记并核验过的本地路由。
+    if (claimedExpressions.has(key)) continue
     usedExpressions.add(key)
     const decl = dynamicDecls.find((d) => d.source === sourcePath && d.expression === registration.pathExpression)
     if (decl === undefined) { unresolvedExpressions.push(key); continue }

@@ -45,6 +45,51 @@
     {
       "source": "plugins/dsh-session-delete/src/index.js",
       "expected": 3
+    },
+    {
+      "source": "vendor/dsh-purge/lib/index.js",
+      "expected": 1
+    },
+    {
+      "source": "vendor/dsh-purge/lib/redteam/ui.js",
+      "expected": 1
+    }
+  ],
+  "localRoutes": [
+    {
+      "id": "dsh-purge-host-routes",
+      "source": "vendor/dsh-purge/lib/index.js",
+      "kind": "exact+prefix",
+      "paths": [
+        "/dsh-purge/status",
+        "/dsh-purge/hooks-deny",
+        "/dsh-purge/last-user",
+        "/dsh-purge/rewind/options",
+        "/dsh-purge/rewind",
+        "/dsh-purge/update",
+        "/dsh-purge/apply",
+        "/dsh-purge/revert",
+        "/dsh-purge/uninstall",
+        "/dsh-purge/drill-grant",
+        "/dsh-purge/override",
+        "/dsh-purge/own-servers",
+        "/dsh-purge/restart",
+        "/dsh-purge/skills",
+        "/dsh-purge/skill",
+        "/dsh-purge/rules"
+      ],
+      "authMarker": "allowPluginRequest",
+      "authCallMarker": "if (!allowPluginRequest(request, response)) return;",
+      "evidence": "不在 /api 前缀下（因此不经过 client-connection 的 /api 门），由 lib/index.js:1730-1748 allowPluginRequest 自证：Host 头必须存在、Origin 的 host 必须与 Host 同源，否则 denyCrossOrigin 直接 403。两条注册包装（installWebServer 的 registerPluginRoute 1762、模块级 registerRoute 2562）都把该 guard 套在 handler 最外层，全部 16 条路径共用同一道门；这 16 条是设置页（破甲状态/补丁/规划/重启）与技能/规则下发的全部入口，没有一条是免鉴权的旁路。"
+    },
+    {
+      "id": "dsh-purge-redteam-bridge",
+      "source": "vendor/dsh-purge/lib/redteam/ui.js",
+      "kind": "exact",
+      "paths": ["/redteam/api"],
+      "authMarker": "const loopback = remote === '127.0.0.1'",
+      "authCallMarker": "const loopback = remote === '127.0.0.1'",
+      "evidence": "演练台 HTTP 桥（POST only，405 挡其它方法）。注册块内自带来源校验：remoteAddress 是回环则放行（桌面/安卓壳都是本机 WebView 直连），非回环时 Origin.host 必须等于 Host（含 app:// 与 null 两种桌面形态），否则 403；鉴权不依赖 /api 前缀门，故在本地路由面登记而不是 routes 表。"
     }
   ],
   "dynamicPathExpressions": [

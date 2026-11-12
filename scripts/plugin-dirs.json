@@ -15,7 +15,8 @@
   ],
   "externals": [
     "vendor/dshmarketplace-plugin",
-    "vendor/dsh-plugin-subscriptions"
+    "vendor/dsh-plugin-subscriptions",
+    "vendor/dsh-purge"
   ],
   "dynamicOnly": [
     "plugins/dsh-linux-bootstrap"

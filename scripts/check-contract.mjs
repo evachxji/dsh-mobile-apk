@@ -681,8 +681,24 @@ if (!existsSync(overlayPath) || !existsSync(PROFILE_PATCH_PATH) || semverImpl ==
         if (!existsSync(pkgPath)) continue
         nameToRepo.set(JSON.parse(readFileSync(pkgPath, 'utf8')).name, dir)
       }
+      /**
+       * 条目名 → 仓库目录。先按全名，再按**包名**归一（0.15.x，dsh-purge）。
+       *
+       * 为什么：cordis 的 `name:` 可以是包的 exports 子路径（`dsh-purge/redteam` →
+       * `exports["./redteam"]`）。它和包名指向同一个 node_modules 目录、同一个 package.json，
+       * 只是装配该包里的另一个插件模块 —— 按全名查表会把它当成「仓库里不存在的包」判红，
+       * 而那条结论是错的（包在场、版本钉也在这个 repo 上）。归一判据与
+       * `check-patch-mounts.mjs` 的 `packageNameOf` 同源（两处必须同进同出）。
+       */
+      const packageNameOfEntry = (name) => {
+        const raw = String(name).trim()
+        const parts = raw.split('/').filter((p) => p !== '')
+        if (parts.length === 0) return ''
+        return raw.startsWith('@') && parts.length >= 2 ? parts[0] + '/' + parts[1] : parts[0]
+      }
+      const repoOfMount = (name) => nameToRepo.get(name) ?? nameToRepo.get(packageNameOfEntry(name))
       const mountNames = new Set(mounts.inserts.map(r => r.name))
-      const ghostMounted = [...mountNames].filter(n => !n.startsWith('@deepseek-ai/') && !nameToRepo.has(n))
+      const ghostMounted = [...mountNames].filter(n => !n.startsWith('@deepseek-ai/') && repoOfMount(n) === undefined)
       if (ghostMounted.length > 0) fail('profile patch 挂了仓库里不存在的包（注入链会带一个空壳）: ' + ghostMounted.join(', '))
       // 动态加载豁免：与 check-patch-mounts 读同一份登记（scripts/plugin-dirs.json 的 dynamicOnly）。
       // 只对登记过的包免除「必须挂载」，其余登记包照旧按幽灵登记判红；两条清单都不认的包无法借此漏检。
@@ -710,7 +726,7 @@ if (!existsSync(overlayPath) || !existsSync(PROFILE_PATCH_PATH) || semverImpl ==
           else { judged += 1; ok('insert ' + row.id + ': 引擎包 ' + row.name + '@' + pinned + ' 与运行时同版') }
           continue
         }
-        const repo = nameToRepo.get(row.name)
+        const repo = repoOfMount(row.name)
         if (repo === undefined) continue // 上面已按幽灵判红
         const pkg = JSON.parse(readFileSync(join(root, repo, 'package.json'), 'utf8'))
         const peers = pkg.peerDependencies

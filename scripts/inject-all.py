@@ -105,7 +105,11 @@ def build_ext_replacements(pkg_dirs):
         except Exception:
             name = os.path.basename(os.path.normpath(d))
         files = {}
-        for sub in ("lib", "skills"):
+        # presets/（0.15.x）：dsh-purge 的演练台预设（presets/redteam/*.yml + anchor-gate.mjs）由
+        # lib/redteam 在运行期读包内相对路径并落到 $DSH_HOME/.agent-presets/。它既不是 lib/ 也不是
+        # skills/，旧清单下会被静默丢弃 ⇒ 设备上演练台「预设为空」而仓内门禁全绿（同为 P0 形态的
+        # 「注入面漏一个目录」）。注入面因此显式含三棵树：lib/ + skills/ + presets/。
+        for sub in ("lib", "skills", "presets"):
             base = os.path.join(d, sub)
             if not os.path.isdir(base):
                 continue
@@ -146,7 +150,7 @@ def match_dsh_android(name, dsh_names):
 
 
 def match_ext(name, ext_names):
-    """命中返回 (pkg, rel)：lib/*(-.map) / skills/* / 清单文件。"""
+    """命中返回 (pkg, rel)：lib/*(-.map) / skills/* / presets/* / 清单文件。"""
     if not name.startswith("home/.dsh/profiles/"):
         return None
     for pkg in ext_names:
@@ -157,7 +161,7 @@ def match_ext(name, ext_names):
         rel = name[idx + len(marker):]
         if rel.startswith("lib/") and not rel.endswith(".map"):
             return (pkg, rel)
-        if rel.startswith("skills/"):
+        if rel.startswith("skills/") or rel.startswith("presets/"):
             return (pkg, rel)
         if rel in EXT_INCLUDE_FILES:
             return (pkg, rel)

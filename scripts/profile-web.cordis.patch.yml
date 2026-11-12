@@ -266,3 +266,66 @@
 - insert:
     - id: session-delete
       name: '@dsh-android/dsh-session-delete'
+
+# ── 破甲（0.15.x 内置预装，2026-11-12）─────────────────────────────────────────────
+# 出厂自带 dsh-purge：APK 装完即用，用户无需再进市场安装。
+#
+# 来源：vendor/dsh-purge（evachxji/dsh-purge master，上游 YuJunZhiXue/dsh-purge 的全量镜像；
+# 上游即将删库，镜像为本仓唯一可取证来源）。注入集登记在 scripts/plugin-dirs.json 的 externals，
+# 随快照落到每个装配 profile 的 node_modules/dsh-purge/；本仓对 vendored 字节的改动
+# （客户端产物挪到 lib/client.js、构建脚本/截图目录不入库）逐条登记在 vendor/dsh-purge/PATCHES.md。
+#
+# 为什么整段照抄上游 bundle patch（vendor/dsh-purge/cordis.patch.yml）而不是只挂主包：
+# 上游把「破甲」拆成四个装配面——主包（prompt 装配改写 + 设置页）、redteam 预设/技能落地、
+# redteam 事实库（SQLite，进程级唯一服务）、redteam HTTP 桥。只挂主包时设置页能开，但演练台
+# 那半边是空的（服务缺席 → 工具行 pending）。四个面同进同出才是官方安装后的形态。
+#
+# 与上游的两处**有意**偏差：
+#   ① 上游顶层那条 `- id: dsh-purge` + `inject: [systemPrompt, tools]` 覆盖不再单列——inject 是
+#      模块导出（lib/index.js:57），patch 里重复声明不产生额外语义，而同一 id 出现两次会被
+#      check-patch-mounts 的条目级判据判成「id 重复」。
+#   ② redteam 事实库不写 `root: !!js dshHomePath('redteam')`：store 自身缺省就是
+#      `$DSH_HOME/redteam`（lib/redteam/store.js:resolveRoot 三档回落），而 !!js 求值依赖
+#      dshHomePath 服务在装配时刻已 provide，快照首启时序不保证。用缺省值 = 同一路径、零时序赌注。
+#
+# 逆转条件：从本文件删掉下面三段 + scripts/plugin-dirs.json 的 externals 条目 + vendor/dsh-purge/。
+# system-prompt 覆盖：上游随包附带的 bundle patch 用配置面关掉 harness 身份行并清空 persona 前缀，
+# 这是「破甲」在水位线上的那一半（另一半是 lib/identity.js 的 assemble 改写）。
+- id: system-prompt
+  config:
+    includeHarnessIdentity: false
+    personaPrefix: ""
+    personaSuffix: "Your working directory is {{cwd}}."
+
+- insert:
+    - id: dsh-purge
+      name: dsh-purge
+      config:
+        enabled: true
+        autoApplyOnStart: false
+        autoUpdateOnStart: false
+        autoRevertOnMissing: false
+        injectOnce: false
+        stripMnemon: true
+        verbose: false
+        postPrompt: ""
+        postPromptOrder: 5100
+        autoRetry: true
+        retryMax: 3
+        autoContinue: false
+        continueMax: 3
+        continueText: "继续"
+        capabilityProtocol: true
+        hooksDenyBypass: true
+
+    # 演练台：预设 + 技能落地（本包 lib/redteam，assets 在 presets/ 与 skills/）
+    - id: dsh-purge-redteam
+      name: dsh-purge/redteam
+
+    # 演练台事实库（SQLite），数据在 $DSH_HOME/redteam
+    - id: dsh-purge-redteam-store
+      name: dsh-purge/redteam/store
+
+    # 演练台 HTTP 桥（POST /redteam/api，注册块内自带同源/回环校验）
+    - id: dsh-purge-redteam-ui
+      name: dsh-purge/redteam/ui

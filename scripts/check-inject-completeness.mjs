@@ -125,8 +125,13 @@ const injectedMembers = (dir, kind) => {
   const lib = join(dir, 'lib')
   if (existsSync(lib)) for (const rel of walkFiles(lib)) out.add('lib/' + rel)
   if (kind === 'external') {
-    const skills = join(dir, 'skills')
-    if (existsSync(skills)) for (const rel of walkFiles(skills)) out.add('skills/' + rel)
+    // 根级外部包的注入面 = lib/** + skills/** + presets/** + 在场清单文件（与 inject-all.py
+    // build_ext_replacements 逐字同源）。presets/ 是 0.15.x 为 dsh-purge 的演练台预设加的第三棵树：
+    // 少了它设备上「预设为空」，而成员/导入两条判据都不会提——正是 P0 的形态。
+    for (const tree of ['skills', 'presets']) {
+      const base = join(dir, tree)
+      if (existsSync(base)) for (const rel of walkFiles(base)) out.add(tree + '/' + rel)
+    }
     for (const f of EXT_INCLUDE_FILES) if (existsSync(join(dir, f))) out.add(f)
   }
   return out
@@ -161,6 +166,12 @@ const DECLARED_NOT_INJECTED = new Map([
   ['@dsh-android/linux-bootstrap', {
     paths: ['src', 'client', 'README.md'],
     reason: '服务端源码构建到 lib/ 后注入；Android 设置界面由响应式插件提供，原上游客户端和说明只随源码保留。',
+  }],
+  ['dsh-purge', {
+    paths: ['bin'],
+    reason: 'npm 发布面含 CLI（bin/dsh-purge.js，桌面端 `dsh-purge` 命令：装/卸/重放补丁）。'
+      + '移动端没有这个命令行入口——壳侧的插件管理走 pluginManager RPC，补丁面由 profile patch 决定，'
+      + '故注入面只携带运行期面（package.json + lib/** + skills/** + presets/** + 在场清单文件）。',
   }],
 ])
 

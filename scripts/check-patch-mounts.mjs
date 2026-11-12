@@ -111,6 +111,27 @@ export function mountedNames(text) {
 }
 
 /**
+ * 挂载条目名 → **包名**（`pkg/sub` 取 `pkg`；scoped 取 `@scope/name`）。
+ *
+ * 为什么需要（0.15.x，dsh-purge）：cordis 的 `name:` 既可以是包名，也可以是包的
+ * **exports 子路径**（`dsh-purge/redteam` 解析到 `exports["./redteam"]`）。子路径不是
+ * 「注入面之外的包」——它和包名指向同一个 node_modules 目录，只是装配的是同一个包里的
+ * 另一个插件模块。反向差集若按整串比较，一个包内的第 2~4 个装配面会被判成「多挂了包」，
+ * 而正向差集已经因第 1 条（包名本体）通过了。故反向差集按包名归一后再比。
+ *
+ * 边界：只做**归一去重**，不做通配——归一后仍必须有对应的注入包，否则照旧判红。
+ * @param entryName 条目 `name:` 原文（可带引号残留已由 scalar() 去掉）。
+ * @returns 包名。
+ */
+export function packageNameOf(entryName) {
+  const parts = String(entryName).split('/').filter((p) => p !== '')
+  if (parts.length === 0) return ''
+  return String(entryName).trim().startsWith('@') && parts.length >= 2
+    ? parts[0] + '/' + parts[1]
+    : parts[0]
+}
+
+/**
  * 动态加载豁免：scripts/plugin-dirs.json 的 dynamicOnly。
  *
  * 为什么需要：bootstrap 的 apply() 需要函数型 config（linuxAssetIO），YAML 装配表达不了，
@@ -346,6 +367,13 @@ if (process.argv.includes('--self-test')) {
   cases.push(['#1036 放行例：非 @deepseek-ai 包不受前缀豁免边界约束（由双向差集判定）',
     unknownEnginePackages(new Set(['@dsh-android/x', 'dshmarketplace-plugin']), engineNames).length === 0,
     JSON.stringify(unknownEnginePackages(new Set(['@dsh-android/x', 'dshmarketplace-plugin']), engineNames))])
+  // 0.15.x（dsh-purge）：包内 exports 子路径是同一个注入包的第 2~4 个装配面。
+  // 不归一时反向差集会把它读成「挂载了注入面之外的包」，判红结论正确但对象错误。
+  cases.push(['0.15.x 归一见例：包内 exports 子路径挂载按包名归一（dsh-purge/redteam/store → dsh-purge）',
+    packageNameOf('dsh-purge/redteam/store') === 'dsh-purge'
+    && packageNameOf('@dsh-android/dsh-shell-termux') === '@dsh-android/dsh-shell-termux'
+    && packageNameOf('@scope/pkg/sub/deep') === '@scope/pkg',
+    [packageNameOf('dsh-purge/redteam/store'), packageNameOf('@dsh-android/dsh-shell-termux'), packageNameOf('@scope/pkg/sub/deep')].join(' / ')])
 
   let bad = 0
   for (const [label, ok, detail] of cases) {
@@ -410,8 +438,10 @@ const missing = gaps.missing
 const deadExemptions = unprovenExemptions(ROOT, (manifest.dirs ?? []).map((d) => String(d).replace(/\\/g, '/')),
   [...dynamicOnly]).map((e) => e.name ?? e.dir)
 // 反向：挂载集 ∩ 本仓注入面 ⊆ 注入集（挂载了但清单/调用方没注入 = 装配失败或旧版残留）
+// 0.15.x：按**包名**归一后比（`dsh-purge/redteam` 与 `dsh-purge` 同属一个注入包，见 packageNameOf）。
 const ENGINE_SCOPE = '@deepseek-ai/'
-const unmounted = [...mounted].filter((n) => !injected.has(n) && !n.startsWith(ENGINE_SCOPE))
+const unmounted = [...new Set([...mounted].map(packageNameOf))]
+  .filter((n) => !injected.has(n) && !n.startsWith(ENGINE_SCOPE))
 
 if (deadExemptions.length > 0) {
   console.error('dynamicOnly 未能证明加载入口: ' + deadExemptions.join(', '))

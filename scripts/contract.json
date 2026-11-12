@@ -25,6 +25,26 @@
         "rowId": "dsh-undo-savepoint",
         "pkg": "dsh-undo-savepoint",
         "why": "Third-party vendor copy 0.4.9 has no @deepseek-ai/dsh* peer; upstream fail-open is not a compatibility test. Runtime behavior remains subject to the registered Android undo patches and future artifact/runtime acceptance."
+      },
+      {
+        "rowId": "dsh-purge",
+        "pkg": "dsh-purge",
+        "why": "0.15.x 出厂内置的第三方插件（1.1.71）只声明 @deepseek-ai/cordis 一个 peer（host 服务契约），不声明任何 @deepseek-ai/dsh* peer ⇒ 上游 boot 期按「无 dsh peer 即放行」处理，那是没判而不是验过。它用到的宿主只有 systemPrompt（waterfall `system-prompt/assemble`）与 tools 两个通用服务，两者在 0.2.2-rc.1 上均已由基线包提供；本版接受这一声明事实，兼容性由下面的 exports 子路径行与本仓的设备冒烟共同承担。"
+      },
+      {
+        "rowId": "dsh-purge-redteam",
+        "pkg": "dsh-purge",
+        "why": "同一 vendored 包的 exports 子路径装配面（`dsh-purge/redteam` → exports[\"./redteam\"]），package.json 与 peer 声明与主包完全相同：无 @deepseek-ai/dsh* peer，故与主包同一条判定，不另立风险面。"
+      },
+      {
+        "rowId": "dsh-purge-redteam-store",
+        "pkg": "dsh-purge",
+        "why": "同一 vendored 包的 exports 子路径装配面（`dsh-purge/redteam/store` → exports[\"./redteam/store\"]）。事实库只用 node: 内置模块（node:path/os/fs + node:sqlite），零 dsh* peer、零 node_modules 解析依赖，装配失败面比主包更小。"
+      },
+      {
+        "rowId": "dsh-purge-redteam-ui",
+        "pkg": "dsh-purge",
+        "why": "同一 vendored 包的 exports 子路径装配面（`dsh-purge/redteam/ui` → exports[\"./redteam/ui\"]）。只消费 ctx.webServer 注册一条本地路由，无 @deepseek-ai/dsh* peer；路由鉴权面单独登记在 scripts/api-route-auth-policy.json 的 localRoutes。"
       }
     ],
     "exemptions": [],
@@ -135,6 +155,12 @@
       "id": "llm-subscriptions",
       "pkg": "dsh-plugin-subscriptions",
       "repo": "vendor/dsh-plugin-subscriptions"
+    },
+    {
+      "id": "dsh-purge",
+      "pkg": "dsh-purge",
+      "repo": "vendor/dsh-purge",
+      "why": "0.15.x 出厂内置的破甲插件（APK 装完即自带，无需进市场安装）。同一个 vendored 包含四个装配面：主包 dsh-purge、预设/技能落地 dsh-purge/redteam、SQLite 事实库 dsh-purge/redteam/store、HTTP 桥 dsh-purge/redteam/ui —— 后三条是同一包的 exports 子路径，版本钉覆盖以本行为准（pkg 是包名，不是条目名）。"
     },
     {
       "id": "linux-bootstrap",
